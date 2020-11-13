@@ -3,10 +3,12 @@ const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const path = require('path');
 const app = express();
-const feedRoutes = require('./routes/feed');
-const authRoutes = require('./routes/auth');
 const { stat } = require('fs');
 const multer = require('multer');
+const graphqlHttp = require('express-graphql').graphqlHTTP;
+const graphqlSchema = require('./graphql/schema');
+const graphqlResolver = require('./graphql/resolvers');
+const { graphql } = require('graphql');
 
 const fileStorage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -31,12 +33,32 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if(req.method === 'OPTIONS'){
+        return res.sendStatus(200);
+    }
     next();
 });
-app.use('/feed', feedRoutes);
-app.use('/auth', authRoutes);
 
+app.use('/graphql', graphqlHttp({
+    schema: graphqlSchema,
+    rootValue: graphqlResolver,
+    graphiql: true,
+    formatError(err){
+        if(!err.originalError){
+            return err;
+        }
 
+        const data = err.originalError.data;
+        const message = err.message || 'An error ocurred' ;
+        const code = err.originalError.code || 500;
+        return {
+            message: message,
+            status: code,
+            data: data
+        }
+
+    }
+}));
 
 app.use((error, req, res, next) => {
     console.log(error);
@@ -48,12 +70,7 @@ app.use((error, req, res, next) => {
 
 mongoose.connect('mongodb+srv://urimeba:mochila1@cluster0.7zq0l.mongodb.net/messages?retryWrites=true&w=majority')
     .then(res => {
-        const server = app.listen(8080);
-        const io = require('./socket.io').init(server);
-        io.on('connection', socket => {
-            console.log('Client connected ');
-        });
-
+        app.listen(8080);
 
     })
     .catch(err => {
